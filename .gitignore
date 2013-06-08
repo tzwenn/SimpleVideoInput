@@ -1,0 +1,6 @@
+*.o
+*.so
+*~
+.*.swp
+.DS_Store
+build
