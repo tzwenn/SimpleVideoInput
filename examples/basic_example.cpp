@@ -1,7 +1,13 @@
 #include "SimpleVideoInput.h"
+#include <iostream>
 
-int main()
+int main(int argc, char *argv[])
 {
-	SimpleVideoInput v("/Users/sven/test.mpg");
+	if (argc < 2) {
+		std::cerr << "Usage: basic_example <videofile>" << std::endl;
+		return 1;
+	}
+	SimpleVideoInput v(argv[1]);
+		
 	return 0;
 }

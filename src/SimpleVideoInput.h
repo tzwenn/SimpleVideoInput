@@ -1,5 +1,7 @@
 #pragma once
 
+#include <opencv2/core/core.hpp>
+
 struct SimpleVideoInputDetail;
 
 class SimpleVideoInput 
@@ -7,10 +9,13 @@ class SimpleVideoInput
 public:
 	SimpleVideoInput(const char *filename);
 	virtual ~SimpleVideoInput();
+	
+	bool read(cv::Mat & image);
 
 private:
 	SimpleVideoInputDetail *m_detail;
-
-	void initLibavcodec();
+	
+	void openFirstVideoStream();
+	void openCodec();
 };
 
