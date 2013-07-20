@@ -11,10 +11,11 @@ public:
 	virtual ~SimpleVideoInput();
 	
 	bool read(cv::Mat & image);
+	long millisecondsPerFrame() const;
 
 private:
 	SimpleVideoInputDetail *m_detail;
-	
+
 	void openFirstVideoStream();
 	void openCodec();
 };

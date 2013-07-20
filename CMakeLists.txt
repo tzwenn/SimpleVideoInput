@@ -22,7 +22,7 @@ endif (APPLE)
 
 # Packages
 
-find_package(OpenCV REQUIRED core)
+find_package(OpenCV REQUIRED core highgui)
 find_package(FFmpeg REQUIRED)
 
 # Options
