@@ -19,6 +19,8 @@ public:
 
 	SimpleVideoInput & operator>>(cv::Mat & image);
 	bool read(cv::Mat & image);
+	bool grab();
+	bool retrieve(cv::Mat & image);
 
 private:
 	SimpleVideoInputDetail *m_detail;

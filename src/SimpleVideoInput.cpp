@@ -174,6 +174,11 @@ SimpleVideoInput & SimpleVideoInput::operator>>(cv::Mat & image)
 
 bool SimpleVideoInput::read(cv::Mat & image)
 {
+	return grab() && retrieve(image);
+}
+
+bool SimpleVideoInput::grab()
+{
 	AVPacket packet;
 	int isFrameAvailable;
 
@@ -188,20 +193,24 @@ bool SimpleVideoInput::read(cv::Mat & image)
 		if (!isFrameAvailable)
 			continue;
 
-		sws_scale(m_detail->swsCtx,
-				  (uint8_t const * const *)m_detail->currentFrame->data,
-				  m_detail->currentFrame->linesize,
-				  0,
-				  m_detail->codecCtx->height,
-				  m_detail->currentFrameBGR24->data,
-				  m_detail->currentFrameBGR24->linesize);
-
-		fillMat(image);
-
 		return true;
 	}
 
 	return false;
+}
+
+bool SimpleVideoInput::retrieve(cv::Mat & image)
+{
+	sws_scale(m_detail->swsCtx,
+			  (uint8_t const * const *)m_detail->currentFrame->data,
+			  m_detail->currentFrame->linesize,
+			  0,
+			  m_detail->codecCtx->height,
+			  m_detail->currentFrameBGR24->data,
+			  m_detail->currentFrameBGR24->linesize);
+
+	fillMat(image);
+	return true;
 }
 
 void SimpleVideoInput::fillMat(cv::Mat & image)
