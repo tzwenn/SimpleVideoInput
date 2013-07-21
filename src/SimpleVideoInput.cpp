@@ -18,16 +18,20 @@ struct SimpleVideoInputDetail
 	std::shared_ptr<AVFrame> currentFrame;
 	std::shared_ptr<AVFrame> currentFrameBGR24;
 
-	AVStream *videoStream;
 	struct SwsContext *swsCtx;
 	int videoStreamIdx;
 	bool isOpened;
+	int BGR24Linesize[AV_NUM_DATA_POINTERS];
+
+	int videoWidth;
+	int videoHeight;
 
 	SimpleVideoInputDetail()
-		: videoStream(nullptr),
-		  swsCtx(nullptr),
+		: swsCtx(nullptr),
 		  videoStreamIdx(-1),
-		  isOpened(false)
+		  isOpened(false),
+		  videoWidth(0),
+		  videoHeight(0)
 	{}
 };
 
@@ -43,8 +47,7 @@ SimpleVideoInput::SimpleVideoInput()
 SimpleVideoInput::SimpleVideoInput(const std::string & fileName)
 	: m_detail(new SimpleVideoInputDetail)
 {
-	if (!open(fileName))
-		throw std::runtime_error("Cannot open file (no valid video file or no streams found)");
+	openFormatContext(fileName);
 }
 
 SimpleVideoInput::~SimpleVideoInput()
@@ -54,11 +57,19 @@ SimpleVideoInput::~SimpleVideoInput()
 
 bool SimpleVideoInput::open(const std::string & fileName)
 {
+	try {
+		if (isOpened())
+			release();
+		openFormatContext(fileName);
+		return true;
+	} catch (...) {
+		return false;
+	}
+}
 
+void SimpleVideoInput::openFormatContext(const std::string & fileName)
+{
 	initLibavcodec();
-
-	if (isOpened())
-		release();
 	
 	///////////////////
 	// Open file
@@ -78,10 +89,10 @@ bool SimpleVideoInput::open(const std::string & fileName)
 
 	findFirstVideoStream();
 	openCodec();
-	prepareTargetBuffers();
+	prepareTargetBuffer();
+	prepareResizeContext();
 
 	m_detail->isOpened = true;
-	return true;
 }
 
 bool SimpleVideoInput::isOpened() const
@@ -91,7 +102,7 @@ bool SimpleVideoInput::isOpened() const
 
 void SimpleVideoInput::release()
 {
-	std::shared_ptr<SimpleVideoInputDetail> oldDetail(m_detail);
+	std::unique_ptr<SimpleVideoInputDetail> oldDetail(m_detail);
 
 	m_detail = new SimpleVideoInputDetail;
 }
@@ -116,7 +127,6 @@ void SimpleVideoInput::findFirstVideoStream()
 	for (int streamIdx = 0; streamIdx < m_detail->format->nb_streams; ++streamIdx) {
 		AVStream *stream = m_detail->format->streams[streamIdx];
 		if (stream->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
-			m_detail->videoStream = stream;
 			m_detail->videoStreamIdx = streamIdx;
 			return;
 		}
@@ -127,7 +137,8 @@ void SimpleVideoInput::findFirstVideoStream()
 
 void SimpleVideoInput::openCodec()
 {
-	AVCodecContext *pCodecCtx = m_detail->videoStream->codec;
+	AVStream *stream = m_detail->format->streams[m_detail->videoStreamIdx];
+	AVCodecContext *pCodecCtx = stream->codec;
 
 	AVCodec *codec = avcodec_find_decoder(pCodecCtx->codec_id);
 	if (!codec)
@@ -137,25 +148,22 @@ void SimpleVideoInput::openCodec()
 		throw std::runtime_error("Could not open codec");
 
 	m_detail->codecCtx = std::shared_ptr<AVCodecContext>(pCodecCtx, &avcodec_close);
+	m_detail->videoWidth = pCodecCtx->width;
+	m_detail->videoHeight = pCodecCtx->height;
 }
 
-void SimpleVideoInput::prepareTargetBuffers()
+void SimpleVideoInput::prepareTargetBuffer()
 {
-	int videoWidth = m_detail->codecCtx->width;
-	int videoHeight = m_detail->codecCtx->height;
-
 	m_detail->currentFrame = std::shared_ptr<AVFrame>(avcodec_alloc_frame(), &av_free);
-	m_detail->currentFrameBGR24 = std::shared_ptr<AVFrame>(avcodec_alloc_frame(), &av_free);
+}
 
-	int numBytes = avpicture_get_size(PIX_FMT_BGR24, videoWidth, videoHeight);
-	uint8_t *buffer = (uint8_t *) av_malloc(numBytes * sizeof(uint8_t));
-	m_detail->buffer = std::shared_ptr<uint8_t>(buffer, &av_free);
-
-	m_detail->swsCtx = sws_getContext(videoWidth,
-									  videoHeight,
+void SimpleVideoInput::prepareResizeContext()
+{
+	m_detail->swsCtx = sws_getContext(m_detail->videoWidth,
+									  m_detail->videoHeight,
 									  m_detail->codecCtx->pix_fmt,
-									  videoWidth,
-									  videoHeight,
+									  m_detail->videoWidth,
+									  m_detail->videoHeight,
 									  PIX_FMT_BGR24,
 									  SWS_BILINEAR,
 									  nullptr, nullptr, nullptr);
@@ -163,12 +171,16 @@ void SimpleVideoInput::prepareTargetBuffers()
 	if (!m_detail->swsCtx)
 		throw std::runtime_error("Cannot get sws_getContext for resizing");
 
-	avpicture_fill((AVPicture *)m_detail->currentFrameBGR24.get(), m_detail->buffer.get(), PIX_FMT_BGR24, videoWidth, videoHeight);
+	AVPicture frameAsBGR24;
+	avpicture_fill(&frameAsBGR24, nullptr, PIX_FMT_BGR24, m_detail->videoWidth, m_detail->videoHeight);
+	memcpy(m_detail->BGR24Linesize, frameAsBGR24.linesize, sizeof(m_detail->BGR24Linesize));
 }
 
 SimpleVideoInput & SimpleVideoInput::operator>>(cv::Mat & image)
 {
-	read(image);
+	if (!read(image))
+		image.release();
+
 	return *this;
 }
 
@@ -199,27 +211,18 @@ bool SimpleVideoInput::grab()
 
 bool SimpleVideoInput::retrieve(cv::Mat & image)
 {
+	image.create(m_detail->videoHeight, m_detail->videoWidth, CV_8UC3);
+
+	uint8_t *const dst[1] = {image.data};
 	sws_scale(m_detail->swsCtx,
 			  (uint8_t const * const *)m_detail->currentFrame->data,
 			  m_detail->currentFrame->linesize,
 			  0,
-			  m_detail->codecCtx->height,
-			  m_detail->currentFrameBGR24->data,
-			  m_detail->currentFrameBGR24->linesize);
+			  m_detail->videoHeight,
+			  dst,
+			  m_detail->BGR24Linesize);
 
-	fillMat(image);
+	image.step = m_detail->BGR24Linesize[0];
+
 	return true;
-}
-
-void SimpleVideoInput::fillMat(cv::Mat & image)
-{
-	int width = m_detail->codecCtx->width;
-	int height = m_detail->codecCtx->height;
-	image.create(height, width, CV_8UC3);
-
-	uint8_t *data = m_detail->currentFrameBGR24->data[0];
-	int linesize = m_detail->currentFrameBGR24->linesize[0];
-
-	for (int row = 0; row < height; ++row)
-		memcpy(image.data + image.step * row, data + linesize * row, linesize);
 }

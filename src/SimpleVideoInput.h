@@ -26,9 +26,10 @@ private:
 	SimpleVideoInputDetail *m_detail;
 
 	void initLibavcodec();
+	void openFormatContext(const std::string & fileName);
 	void findFirstVideoStream();
 	void openCodec();
-	void prepareTargetBuffers();
-	void fillMat(cv::Mat & image);
+	void prepareTargetBuffer();
+	void prepareResizeContext();
 };
 
