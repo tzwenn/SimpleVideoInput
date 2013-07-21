@@ -32,4 +32,6 @@ if (WITH_EXAMPLES)
 	add_subdirectory(examples)
 endif(WITH_EXAMPLES)
 
+option(BUILD_STATIC "build a static lib" FALSE)
+
 add_subdirectory(src)
