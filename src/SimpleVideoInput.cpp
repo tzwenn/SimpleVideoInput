@@ -190,10 +190,8 @@ bool SimpleVideoInput::grab()
 
 		// ERROR, ERROR, FIXME!!!!!!!!!!!!!!!!
 		// I wrongly assume a packet fills whole frame
-		if (!isFrameAvailable)
-			continue;
-
-		return true;
+		if (isFrameAvailable)
+			return true;
 	}
 
 	return false;
@@ -225,4 +223,3 @@ void SimpleVideoInput::fillMat(cv::Mat & image)
 	for (int row = 0; row < height; ++row)
 		memcpy(image.data + image.step * row, data + linesize * row, linesize);
 }
-
