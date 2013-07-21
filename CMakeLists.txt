@@ -12,12 +12,12 @@ set(SVI_SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 
 # Use C++11
 
-if (NOT MSVC)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-endif (NOT MSVC)
+if (CMAKE_COMPILER_IS_GNUCXX)
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x -D__STDC_CONSTANT_MACROS")
+endif (CMAKE_COMPILER_IS_GNUCXX)
 
 if (APPLE)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -stdlib=libc++")
 endif (APPLE)
 
 # Packages
