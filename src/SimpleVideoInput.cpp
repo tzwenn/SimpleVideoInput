@@ -10,56 +10,19 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
-/******************************************************************************/
-/*                                 Aux types                                  */
-
-struct VideoPacket {
-	
-	explicit VideoPacket(AVFormatContext * ctxt = nullptr)
-	{
-		av_init_packet(&packet);
-		packet.data = nullptr;
-		if (ctxt) reset(ctxt);
-	}
-	
-	VideoPacket(VideoPacket && other)
-		: packet(std::move(other.packet))
-	{
-		other.packet.data = nullptr;
-	}
-	
-	~VideoPacket()
-	{
-		if (packet.data)
-			av_free_packet(&packet);
-	}
-	
-	void reset(AVFormatContext * ctxt)
-	{
-		if (packet.data)
-			av_free_packet(&packet);
-		if (av_read_frame(ctxt, &packet) < 0)
-			packet.data = nullptr;
-	}
-	
-	AVPacket packet;
-};
-
+#define DEBUG_DUMP
 
 struct SimpleVideoInputDetail
 {
 	std::shared_ptr<AVFormatContext> format;
+	std::shared_ptr<AVCodecContext> codecCtx;
+	std::shared_ptr<uint8_t> buffer;
+	std::shared_ptr<AVFrame> currentFrame;
+	std::shared_ptr<AVFrame> currentFrameBGR24;
+
 	AVStream *videoStream;
-	std::shared_ptr<AVCodecContext> video;
-	std::vector<uint8_t> codecContextExtraData;
-	size_t offsetInData;
-
-	SimpleVideoInputDetail()
-	{
-		videoStream = nullptr;
-		offsetInData = 0;
-	}
-
+	struct SwsContext *swsCtx;
+	int videoStreamIdx;
 };
 
 /******************************************************************************/
@@ -85,79 +48,45 @@ SimpleVideoInput::SimpleVideoInput(const char *filename)
 	
 	///////////////////
 	// Open file
-	
-	AVFormatContext *avFormatPtr = nullptr;
-	if (avformat_open_input(&avFormatPtr, filename, nullptr, nullptr) != 0) {
+		
+	AVFormatContext *pFormatCtx = nullptr;
+	if (avformat_open_input(&pFormatCtx, filename, nullptr, nullptr) != 0)
 		throw std::runtime_error("Error while calling avformat_open_input (probably invalid file format)");
-	}
 
-	m_detail->format = std::shared_ptr<AVFormatContext>(avFormatPtr, &avformat_free_context);	
-	if (avformat_find_stream_info(avFormatPtr, nullptr) < 0) {
+	m_detail->format = std::shared_ptr<AVFormatContext>(pFormatCtx, [](AVFormatContext *format)
+														{
+															avformat_close_input(&format);
+														});
+	if (avformat_find_stream_info(pFormatCtx, nullptr) < 0)
 		throw std::runtime_error("Error while calling avformat_find_stream_info");
-	}
 
-	openFirstVideoStream();
+#ifdef DEBUG_DUMP
+	av_dump_format(pFormatCtx, 0, filename, 0);
+#endif
+
+	findFirstVideoStream();
 	openCodec();
+	prepareTargetBuffers();
 }
-
 
 SimpleVideoInput::~SimpleVideoInput()
 {
 	delete m_detail;
 }
 
-bool SimpleVideoInput::read(cv::Mat & image)
-{
-	std::shared_ptr<AVFrame> avFrame(avcodec_alloc_frame(), &av_free);
-	VideoPacket packet;
-
-	// Jump to next packet of our frame
-	if (m_detail->offsetInData >= packet.packet.size) {
-		do {
-			packet.reset(m_detail->format.get());
-		} while (packet.packet.stream_index != m_detail->videoStream->index);
-	}
-	
-	AVPacket packetToSend;
-	packetToSend.data = packet.packet.data + m_detail->offsetInData;
-	packetToSend.size = packet.packet.size - m_detail->offsetInData;
-
-	int isFrameAvailable = 0;
-	const int processedLength = avcodec_decode_video2(m_detail->video.get(), avFrame.get(), &isFrameAvailable, &packetToSend);
-	if (processedLength < 0) {
-		av_free_packet(&packetToSend);
-		throw std::runtime_error("Error while processing the data");
-	}
-
-	m_detail->offsetInData += processedLength;
-	///////////////////////////////////////////////////////////////////////////
-
-#if 0
-	std::shared_ptr<AVPicture> pic = std::shared_ptr<AVPicture>(new AVPicture, [](AVPicture *pic) { avpicture_free(pic); });
-	avpicture_alloc(pic.get(), PIX_FMT_RGB24, avFrame->width, avFrame->height);
-	auto ctxt = sws_getContext(avFrame->width, avFrame->height, static_cast<PixelFormat>(avFrame->format), avFrame->width, avFrame->height, PIX_FMT_RGB24, SWS_BILINEAR, nullptr, nullptr, nullptr);
-	if (ctxt == nullptr)
-		throw std::runtime_error("Error while calling sws_getContext");
-	sws_scale(ctxt, avFrame->data, avFrame->linesize, 0, avFrame->height, pic->data, pic->linesize);
-
-	image = cv::Mat(avFrame->height, avFrame->width, CV_8UC3, pic->data);
-#endif
-
-	///////////////////////////////////////////////////////////////////////////
-	return isFrameAvailable;
-}
-
 long SimpleVideoInput::millisecondsPerFrame() const
 {
-	return m_detail->video->ticks_per_frame * 1000 * m_detail->video->time_base.num / m_detail->video->time_base.den;
+	double frame_delay = av_q2d(m_detail->codecCtx->time_base);
+	return m_detail->codecCtx->ticks_per_frame * 1000 * frame_delay;
 }
 
-void SimpleVideoInput::openFirstVideoStream()
+void SimpleVideoInput::findFirstVideoStream()
 {
 	for (int streamIdx = 0; streamIdx < m_detail->format->nb_streams; ++streamIdx) {
 		AVStream *stream = m_detail->format->streams[streamIdx];
 		if (stream->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
 			m_detail->videoStream = stream;
+			m_detail->videoStreamIdx = streamIdx;
 			return;
 		}
 	}
@@ -167,17 +96,88 @@ void SimpleVideoInput::openFirstVideoStream()
 
 void SimpleVideoInput::openCodec()
 {
-	AVCodecContext *orgCodecCtx = m_detail->videoStream->codec;
-	AVCodec *codec = avcodec_find_decoder(orgCodecCtx->codec_id);
+	AVCodecContext *pCodecCtx = m_detail->videoStream->codec;
+
+	AVCodec *codec = avcodec_find_decoder(pCodecCtx->codec_id);
 	if (!codec)
 		throw std::runtime_error("Codec required by video file not available");
-	
-	m_detail->video = std::shared_ptr<AVCodecContext>(avcodec_alloc_context3(codec), [](AVCodecContext* c) { avcodec_close(c); av_free(c); });
-	
-	m_detail->codecContextExtraData = std::vector<uint8_t>(orgCodecCtx->extradata, orgCodecCtx->extradata + orgCodecCtx->extradata_size);
-	m_detail->video->extradata = m_detail->codecContextExtraData.data();
-	m_detail->video->extradata_size = orgCodecCtx->extradata_size;
-	
-	if (avcodec_open2(m_detail->video.get(), codec, nullptr) < 0)
+
+	if (avcodec_open2(pCodecCtx, codec, nullptr) < 0)
 		throw std::runtime_error("Could not open codec");
+
+	m_detail->codecCtx = std::shared_ptr<AVCodecContext>(pCodecCtx, &avcodec_close);
 }
+
+void SimpleVideoInput::prepareTargetBuffers()
+{
+	int videoWidth = m_detail->codecCtx->width;
+	int videoHeight = m_detail->codecCtx->height;
+
+	m_detail->currentFrame = std::shared_ptr<AVFrame>(avcodec_alloc_frame(), &av_free);
+	m_detail->currentFrameBGR24 = std::shared_ptr<AVFrame>(avcodec_alloc_frame(), &av_free);
+
+	int numBytes = avpicture_get_size(PIX_FMT_BGR24, videoWidth, videoHeight);
+	uint8_t *buffer = (uint8_t *) av_malloc(numBytes * sizeof(uint8_t));
+	m_detail->buffer = std::shared_ptr<uint8_t>(buffer, &av_free);
+
+	m_detail->swsCtx = sws_getContext(videoWidth,
+									  videoHeight,
+									  m_detail->codecCtx->pix_fmt,
+									  videoWidth,
+									  videoHeight,
+									  PIX_FMT_BGR24,
+									  SWS_BILINEAR,
+									  nullptr, nullptr, nullptr);
+
+	if (!m_detail->swsCtx)
+		throw std::runtime_error("Error while calling sws_getContext");
+
+	avpicture_fill((AVPicture *)m_detail->currentFrameBGR24.get(), m_detail->buffer.get(), PIX_FMT_BGR24, videoWidth, videoHeight);
+}
+
+
+bool SimpleVideoInput::read(cv::Mat & image)
+{
+	AVPacket packet;
+	int isFrameAvailable;
+
+	while (av_read_frame(m_detail->format.get(), &packet) >= 0) {
+		if (packet.stream_index != m_detail->videoStreamIdx)
+			continue;
+
+		avcodec_decode_video2(m_detail->codecCtx.get(), m_detail->currentFrame.get(), &isFrameAvailable, &packet);
+
+		// ERROR, ERROR, FIXME!!!!!!!!!!!!!!!!
+		// I wrongly assume a packet fills whole frame
+		if (!isFrameAvailable)
+			continue;
+
+		sws_scale(m_detail->swsCtx,
+				  (uint8_t const * const *)m_detail->currentFrame->data,
+				  m_detail->currentFrame->linesize,
+				  0,
+				  m_detail->codecCtx->height,
+				  m_detail->currentFrameBGR24->data,
+				  m_detail->currentFrameBGR24->linesize);
+
+		fillMat(image);
+
+		return true;
+	}
+
+	return false;
+}
+
+void SimpleVideoInput::fillMat(cv::Mat & image)
+{
+	int width = m_detail->codecCtx->width;
+	int height = m_detail->codecCtx->height;
+	image.create(height, width, CV_8UC3);
+
+	uint8_t *data = m_detail->currentFrameBGR24->data[0];
+	int linesize = m_detail->currentFrameBGR24->linesize[0];
+
+	for (int row = 0; row < height; ++row)
+		memcpy(image.data + image.step * row, data + linesize * row, linesize);
+}
+

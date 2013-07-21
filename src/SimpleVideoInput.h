@@ -16,7 +16,9 @@ public:
 private:
 	SimpleVideoInputDetail *m_detail;
 
-	void openFirstVideoStream();
+	void findFirstVideoStream();
 	void openCodec();
+	void prepareTargetBuffers();
+	void fillMat(cv::Mat & image);
 };
 
