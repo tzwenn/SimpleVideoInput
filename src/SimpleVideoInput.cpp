@@ -35,6 +35,42 @@ struct SimpleVideoInputDetail
 	{}
 };
 
+
+// Use RAII to ensure av_free_packet is called.
+// Based on http://blog.tomaka17.com/2012/03/libavcodeclibavformat-tutorial
+
+struct SafeAVPacket
+{
+	AVPacket packet;
+
+	SafeAVPacket()
+	{
+		packet.data = nullptr;
+	}
+
+	virtual ~SafeAVPacket()
+	{
+		freeData();
+	}
+
+	int reset(AVFormatContext* formatCtx)
+	{
+		freeData();
+
+		int result = av_read_frame(formatCtx, &packet);
+		if (result < 0)
+			packet.data = nullptr;
+		return result;
+	}
+
+	void freeData()
+	{
+		if (packet.data)
+			av_free_packet(&packet);
+	}
+
+};
+
 /******************************************************************************/
 /*                              SimpleVideoInput                              */
 
@@ -191,14 +227,14 @@ bool SimpleVideoInput::read(cv::Mat & image)
 
 bool SimpleVideoInput::grab()
 {
-	AVPacket packet;
+	SafeAVPacket packet;
 	int isFrameAvailable;
 
-	while (av_read_frame(m_detail->format.get(), &packet) >= 0) {
-		if (packet.stream_index != m_detail->videoStreamIdx)
+	while (packet.reset(m_detail->format.get()) >= 0) {
+		if (packet.packet.stream_index != m_detail->videoStreamIdx)
 			continue;
 
-		avcodec_decode_video2(m_detail->codecCtx.get(), m_detail->currentFrame.get(), &isFrameAvailable, &packet);
+		avcodec_decode_video2(m_detail->codecCtx.get(), m_detail->currentFrame.get(), &isFrameAvailable, &packet.packet);
 
 		// ERROR, ERROR, FIXME!!!!!!!!!!!!!!!!
 		// I wrongly assume a packet fills whole frame
