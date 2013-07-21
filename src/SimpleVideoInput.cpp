@@ -10,8 +10,6 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
-#define DEBUG_DUMP
-
 struct SimpleVideoInputDetail
 {
 	std::shared_ptr<AVFormatContext> format;
@@ -23,50 +21,30 @@ struct SimpleVideoInputDetail
 	AVStream *videoStream;
 	struct SwsContext *swsCtx;
 	int videoStreamIdx;
+	bool isOpened;
+
+	SimpleVideoInputDetail()
+		: videoStream(nullptr),
+		  swsCtx(nullptr),
+		  videoStreamIdx(-1),
+		  isOpened(false)
+	{}
 };
-
-/******************************************************************************/
-/*                                Aux methods                                 */
-
-static void initLibavcodec()
-{
-	static std::once_flag initAVFlag;
-	std::call_once(initAVFlag, []() {
-		av_register_all();
-	});
-
-}
 
 /******************************************************************************/
 /*                              SimpleVideoInput                              */
 
 
-SimpleVideoInput::SimpleVideoInput(const char *filename)
+SimpleVideoInput::SimpleVideoInput()
 	: m_detail(new SimpleVideoInputDetail)
 {
-	initLibavcodec();
-	
-	///////////////////
-	// Open file
-		
-	AVFormatContext *pFormatCtx = nullptr;
-	if (avformat_open_input(&pFormatCtx, filename, nullptr, nullptr) != 0)
-		throw std::runtime_error("Error while calling avformat_open_input (probably invalid file format)");
+}
 
-	m_detail->format = std::shared_ptr<AVFormatContext>(pFormatCtx, [](AVFormatContext *format)
-														{
-															avformat_close_input(&format);
-														});
-	if (avformat_find_stream_info(pFormatCtx, nullptr) < 0)
-		throw std::runtime_error("Error while calling avformat_find_stream_info");
-
-#ifdef DEBUG_DUMP
-	av_dump_format(pFormatCtx, 0, filename, 0);
-#endif
-
-	findFirstVideoStream();
-	openCodec();
-	prepareTargetBuffers();
+SimpleVideoInput::SimpleVideoInput(const std::string & fileName)
+	: m_detail(new SimpleVideoInputDetail)
+{
+	if (!open(fileName))
+		throw std::runtime_error("Cannot open file (no valid video file or no streams found)");
 }
 
 SimpleVideoInput::~SimpleVideoInput()
@@ -74,10 +52,63 @@ SimpleVideoInput::~SimpleVideoInput()
 	delete m_detail;
 }
 
+bool SimpleVideoInput::open(const std::string & fileName)
+{
+
+	initLibavcodec();
+
+	if (isOpened())
+		release();
+	
+	///////////////////
+	// Open file
+		
+	AVFormatContext *pFormatCtx = nullptr;
+	if (avformat_open_input(&pFormatCtx, fileName.c_str(), nullptr, nullptr) != 0)
+		throw std::runtime_error("Cannot open file: Does not exists or is no supported format");
+
+	m_detail->format
+		= std::shared_ptr<AVFormatContext>(pFormatCtx,
+										   [](AVFormatContext *format)
+										   {
+											   avformat_close_input(&format);
+										   });
+	if (avformat_find_stream_info(pFormatCtx, nullptr) < 0)
+		throw std::runtime_error("File contains no streams");
+
+	findFirstVideoStream();
+	openCodec();
+	prepareTargetBuffers();
+
+	m_detail->isOpened = true;
+	return true;
+}
+
+bool SimpleVideoInput::isOpened() const
+{
+	return m_detail->isOpened;
+}
+
+void SimpleVideoInput::release()
+{
+	std::shared_ptr<SimpleVideoInputDetail> oldDetail(m_detail);
+
+	m_detail = new SimpleVideoInputDetail;
+}
+
 long SimpleVideoInput::millisecondsPerFrame() const
 {
 	double frame_delay = av_q2d(m_detail->codecCtx->time_base);
 	return m_detail->codecCtx->ticks_per_frame * 1000 * frame_delay;
+}
+
+void SimpleVideoInput::initLibavcodec()
+{
+	static std::once_flag initAVFlag;
+	std::call_once(initAVFlag, []() {
+		av_register_all();
+	});
+
 }
 
 void SimpleVideoInput::findFirstVideoStream()
@@ -130,11 +161,16 @@ void SimpleVideoInput::prepareTargetBuffers()
 									  nullptr, nullptr, nullptr);
 
 	if (!m_detail->swsCtx)
-		throw std::runtime_error("Error while calling sws_getContext");
+		throw std::runtime_error("Cannot get sws_getContext for resizing");
 
 	avpicture_fill((AVPicture *)m_detail->currentFrameBGR24.get(), m_detail->buffer.get(), PIX_FMT_BGR24, videoWidth, videoHeight);
 }
 
+SimpleVideoInput & SimpleVideoInput::operator>>(cv::Mat & image)
+{
+	read(image);
+	return *this;
+}
 
 bool SimpleVideoInput::read(cv::Mat & image)
 {

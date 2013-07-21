@@ -22,7 +22,6 @@ int main(int argc, char *argv[])
 		IplImage tmp = image;
 		cvShowImage("Current frame", &tmp);
 #else
-
 		cv::imshow("Current frame", image);
 #endif
 		if (cv::waitKey(v.millisecondsPerFrame()) == 'q')
