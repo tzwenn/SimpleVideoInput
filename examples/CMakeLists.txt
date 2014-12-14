@@ -23,3 +23,19 @@ target_link_libraries(
 	file_source
 	SimpleVideoInput
 )
+
+find_package(curl)
+if (CURL_FOUND)
+	include_directories(CURL_INCLUDE_DIRS)
+
+	add_executable(
+		web_source
+		web_source.cpp
+	)
+
+	target_link_libraries(
+		web_source
+		SimpleVideoInput
+		${CURL_LIBRARIES}
+	)
+endif (CURL_FOUND)
