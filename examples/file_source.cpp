@@ -1,6 +1,5 @@
-#include "SimpleVideoInput.h"
 #include "VideoSource.h"
-#include <opencv2/opencv.hpp>
+#include <opencv2/highgui/highgui.hpp>
 #include <iostream>
 
 class FileSource: public svi::VideoSource
