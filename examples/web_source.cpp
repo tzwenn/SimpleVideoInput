@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
 		std::cout << "Read Frame #" << count++ << " (" << v.millisecondsPerFrame() << "ms)" << std::endl;
 
 		cv::imshow("Current frame", image);
-		if (cv::waitKey(v.millisecondsPerFrame()) == 'q')
+		if (cv::waitKey(1) == 'q')
 			break;
 	}
 
