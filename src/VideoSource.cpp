@@ -16,7 +16,7 @@ VideoSource::VideoSource(int buffer_size)
 	}
 
 	m_ioCtx = avio_alloc_context(initialBuf, buffer_size, 0, this,
-								 &VideoSource::readMem,	nullptr, nullptr);
+								 &VideoSource::s_read,	nullptr, nullptr);
 	if (!m_ioCtx) {
 		av_free(initialBuf);
 		throw std::runtime_error("Cannot create AVIOContext");

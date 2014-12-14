@@ -6,8 +6,10 @@ namespace svi {
 
 	class VideoSource
 	{
+		enum { default_bufsize = 4096 };
+
 	public:
-		VideoSource(int buffer_size = 4096);
+		VideoSource(int buffer_size = default_bufsize);
 		virtual ~VideoSource();
 
 		virtual int read(uint8_t *buf, int buf_size) = 0;
@@ -19,7 +21,7 @@ namespace svi {
 	private:
 		AVIOContext *m_ioCtx;
 
-		static int readMem(void *opaque, uint8_t *buf, int buf_size)
+		static int s_read(void *opaque, uint8_t *buf, int buf_size)
 		{ return static_cast<VideoSource *>(opaque)->read(buf, buf_size); }
 
 		friend SimpleVideoInput::SimpleVideoInput(const VideoSource &);
