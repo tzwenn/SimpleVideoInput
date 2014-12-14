@@ -11,7 +11,7 @@ add_executable(
 
 target_link_libraries(
 	basic_example
-	SimpleVideoCapture
+	SimpleVideoInput
 )
 
 add_executable(
@@ -21,5 +21,5 @@ add_executable(
 
 target_link_libraries(
 	file_source
-	SimpleVideoCapture
+	SimpleVideoInput
 )

@@ -1,12 +1,12 @@
-set(MODULE_NAME SimpleVideoCapture)
+set(MODULE_NAME SimpleVideoInput)
 
 file(GLOB sources "*.cpp")
 file(GLOB headers "*.h")
 
 if (BUILD_STATIC)
-	set(SVC_LIB_TYPE STATIC)
+	set(SVI_LIB_TYPE STATIC)
 else (BUILD_STATIC)
-	set(SVC_LIB_TYPE SHARED)
+	set(SVI_LIB_TYPE SHARED)
 endif(BUILD_STATIC)
 
 include_directories(
@@ -15,7 +15,7 @@ include_directories(
 )
 
 add_library(
-	${MODULE_NAME} ${SVC_LIB_TYPE}
+	${MODULE_NAME} ${SVI_LIB_TYPE}
 	${sources}
 	${headers}
 )
