@@ -16,9 +16,7 @@ namespace svi {
 	{
 		std::shared_ptr<AVFormatContext> format;
 		std::shared_ptr<AVCodecContext> codecCtx;
-		std::shared_ptr<uint8_t> buffer;
 		std::shared_ptr<AVFrame> currentFrame;
-		std::shared_ptr<AVFrame> currentFrameBGR24;
 
 		struct SwsContext *swsCtx;
 		int videoStreamIdx;
