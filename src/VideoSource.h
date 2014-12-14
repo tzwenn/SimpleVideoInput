@@ -15,7 +15,6 @@ protected:
 	{ return m_ioCtx; }
 
 private:
-	unsigned char *m_initialBuffer;
 	AVIOContext *m_ioCtx;
 
 	static int readMem(void *opaque, uint8_t *buf, int buf_size)
