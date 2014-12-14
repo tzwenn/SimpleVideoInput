@@ -3,12 +3,15 @@
 #include <opencv2/core/core.hpp>
 
 struct SimpleVideoInputDetail;
+class VideoSource;
+struct AVIOContext;
 
 class SimpleVideoInput 
 {
 public:
 	SimpleVideoInput();
 	SimpleVideoInput(const std::string & fileName);
+	SimpleVideoInput(const VideoSource &videoSource);
 	virtual ~SimpleVideoInput();
 
 	bool open(const std::string & fileName);
@@ -26,7 +29,7 @@ private:
 	SimpleVideoInputDetail *m_detail;
 
 	void initLibavcodec();
-	void openFormatContext(const std::string & fileName);
+	void openFormatContext(const std::string & fileName, AVIOContext *ioCtx = nullptr);
 	void findFirstVideoStream();
 	void openCodec();
 	void prepareTargetBuffer();

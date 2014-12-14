@@ -1,8 +1,8 @@
 #include "SimpleVideoInput.h"
+#include "VideoSource.h"
 
 #include <memory>
 #include <mutex>
-#include <vector>
 
 extern "C" { 
 #include <libavcodec/avcodec.h>
@@ -86,6 +86,12 @@ SimpleVideoInput::SimpleVideoInput(const std::string & fileName)
 	openFormatContext(fileName);
 }
 
+SimpleVideoInput::SimpleVideoInput(const VideoSource & videoSource)
+	: m_detail(new SimpleVideoInputDetail)
+{
+	openFormatContext(std::string(), videoSource.getAVIO());
+}
+
 SimpleVideoInput::~SimpleVideoInput()
 {
 	delete m_detail;
@@ -103,14 +109,19 @@ bool SimpleVideoInput::open(const std::string & fileName)
 	}
 }
 
-void SimpleVideoInput::openFormatContext(const std::string & fileName)
+void SimpleVideoInput::openFormatContext(const std::string & fileName, AVIOContext *ioCtx)
 {
 	initLibavcodec();
 	
 	///////////////////
 	// Open file
-		
+
 	AVFormatContext *pFormatCtx = nullptr;
+	if (ioCtx) {
+		pFormatCtx = avformat_alloc_context();
+		pFormatCtx->pb = ioCtx;
+	}
+
 	if (avformat_open_input(&pFormatCtx, fileName.c_str(), nullptr, nullptr) != 0)
 		throw std::runtime_error("Cannot open file: Does not exists or is no supported format");
 
@@ -122,6 +133,8 @@ void SimpleVideoInput::openFormatContext(const std::string & fileName)
 										   });
 	if (avformat_find_stream_info(pFormatCtx, nullptr) < 0)
 		throw std::runtime_error("File contains no streams");
+
+	av_dump_format(pFormatCtx, 0, "input", 0);
 
 	findFirstVideoStream();
 	openCodec();
@@ -190,7 +203,7 @@ void SimpleVideoInput::openCodec()
 
 void SimpleVideoInput::prepareTargetBuffer()
 {
-	m_detail->currentFrame = std::shared_ptr<AVFrame>(avcodec_alloc_frame(), &av_free);
+	m_detail->currentFrame = std::shared_ptr<AVFrame>(av_frame_alloc(), &av_free);
 }
 
 void SimpleVideoInput::prepareResizeContext()
