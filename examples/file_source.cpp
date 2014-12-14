@@ -3,7 +3,7 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 
-class FileSource: public VideoSource
+class FileSource: public svi::VideoSource
 {
 public:
 	FileSource(const char *fileName)
@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	FileSource fs(argv[1]);
-	SimpleVideoInput v(fs);
+	svi::SimpleVideoInput v(fs);
 	cv::Mat image;
 	int count = 0;
 	while (v.read(image)) {

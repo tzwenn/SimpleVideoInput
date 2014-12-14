@@ -10,30 +10,34 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
-struct SimpleVideoInputDetail
-{
-	std::shared_ptr<AVFormatContext> format;
-	std::shared_ptr<AVCodecContext> codecCtx;
-	std::shared_ptr<uint8_t> buffer;
-	std::shared_ptr<AVFrame> currentFrame;
-	std::shared_ptr<AVFrame> currentFrameBGR24;
+namespace svi {
 
-	struct SwsContext *swsCtx;
-	int videoStreamIdx;
-	bool isOpened;
-	int BGR24Linesize[AV_NUM_DATA_POINTERS];
+	struct SimpleVideoInputDetail
+	{
+		std::shared_ptr<AVFormatContext> format;
+		std::shared_ptr<AVCodecContext> codecCtx;
+		std::shared_ptr<uint8_t> buffer;
+		std::shared_ptr<AVFrame> currentFrame;
+		std::shared_ptr<AVFrame> currentFrameBGR24;
 
-	int videoWidth;
-	int videoHeight;
+		struct SwsContext *swsCtx;
+		int videoStreamIdx;
+		bool isOpened;
+		int BGR24Linesize[AV_NUM_DATA_POINTERS];
 
-	SimpleVideoInputDetail()
-		: swsCtx(nullptr),
-		  videoStreamIdx(-1),
-		  isOpened(false),
-		  videoWidth(0),
-		  videoHeight(0)
-	{}
-};
+		int videoWidth;
+		int videoHeight;
+
+		SimpleVideoInputDetail()
+			: swsCtx(nullptr),
+			  videoStreamIdx(-1),
+			  isOpened(false),
+			  videoWidth(0),
+			  videoHeight(0)
+		{}
+	};
+
+}
 
 
 // Use RAII to ensure av_free_packet is called.
@@ -74,10 +78,12 @@ struct SafeAVPacket
 /******************************************************************************/
 /*                              SimpleVideoInput                              */
 
+using namespace svi;
 
 SimpleVideoInput::SimpleVideoInput()
 	: m_detail(new SimpleVideoInputDetail)
 {
+	;;
 }
 
 SimpleVideoInput::SimpleVideoInput(const std::string & fileName)

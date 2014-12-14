@@ -8,7 +8,7 @@ int main(int argc, char *argv[])
 		std::cerr << "Usage: basic_example <videofile>" << std::endl;
 		return 1;
 	}
-	SimpleVideoInput v(argv[1]);
+	svi::SimpleVideoInput v(argv[1]);
 	cv::Mat image;
 	int count = 0;
 	while (v.read(image)) {

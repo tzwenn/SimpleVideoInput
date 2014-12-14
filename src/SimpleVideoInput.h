@@ -2,37 +2,41 @@
 
 #include <opencv2/core/core.hpp>
 
-struct SimpleVideoInputDetail;
-class VideoSource;
 struct AVIOContext;
 
-class SimpleVideoInput 
-{
-public:
-	SimpleVideoInput();
-	SimpleVideoInput(const std::string & fileName);
-	SimpleVideoInput(const VideoSource &videoSource);
-	virtual ~SimpleVideoInput();
+namespace svi {
 
-	bool open(const std::string & fileName);
-	bool isOpened() const;
-	void release();
+	struct SimpleVideoInputDetail;
+	class VideoSource;
 
-	long millisecondsPerFrame() const;
+	class SimpleVideoInput
+	{
+	public:
+		SimpleVideoInput();
+		SimpleVideoInput(const std::string & fileName);
+		SimpleVideoInput(const VideoSource &videoSource);
+		virtual ~SimpleVideoInput();
 
-	SimpleVideoInput & operator>>(cv::Mat & image);
-	bool read(cv::Mat & image);
-	bool grab();
-	bool retrieve(cv::Mat & image);
+		bool open(const std::string & fileName);
+		bool isOpened() const;
+		void release();
 
-private:
-	SimpleVideoInputDetail *m_detail;
+		long millisecondsPerFrame() const;
 
-	void initLibavcodec();
-	void openFormatContext(const std::string & fileName, AVIOContext *ioCtx = nullptr);
-	void findFirstVideoStream();
-	void openCodec();
-	void prepareTargetBuffer();
-	void prepareResizeContext();
-};
+		SimpleVideoInput & operator>>(cv::Mat & image);
+		bool read(cv::Mat & image);
+		bool grab();
+		bool retrieve(cv::Mat & image);
 
+	private:
+		SimpleVideoInputDetail *m_detail;
+
+		void initLibavcodec();
+		void openFormatContext(const std::string & fileName, AVIOContext *ioCtx = nullptr);
+		void findFirstVideoStream();
+		void openCodec();
+		void prepareTargetBuffer();
+		void prepareResizeContext();
+	};
+
+} // namespace svi

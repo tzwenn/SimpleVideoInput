@@ -2,23 +2,27 @@
 
 #include "SimpleVideoInput.h"
 
-class VideoSource
-{
-public:
-	VideoSource(int buffer_size = 4096);
-	virtual ~VideoSource();
+namespace svi {
 
-	virtual int read(uint8_t *buf, int buf_size) = 0;
+	class VideoSource
+	{
+	public:
+		VideoSource(int buffer_size = 4096);
+		virtual ~VideoSource();
 
-protected:
-	AVIOContext *getAVIO() const
-	{ return m_ioCtx; }
+		virtual int read(uint8_t *buf, int buf_size) = 0;
 
-private:
-	AVIOContext *m_ioCtx;
+	protected:
+		AVIOContext *getAVIO() const
+		{ return m_ioCtx; }
 
-	static int readMem(void *opaque, uint8_t *buf, int buf_size)
-	{ return static_cast<VideoSource *>(opaque)->read(buf, buf_size); }
+	private:
+		AVIOContext *m_ioCtx;
 
-	friend SimpleVideoInput::SimpleVideoInput(const VideoSource &);
-};
+		static int readMem(void *opaque, uint8_t *buf, int buf_size)
+		{ return static_cast<VideoSource *>(opaque)->read(buf, buf_size); }
+
+		friend SimpleVideoInput::SimpleVideoInput(const VideoSource &);
+	};
+
+} // namespace svi

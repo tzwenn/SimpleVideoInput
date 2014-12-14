@@ -6,6 +6,8 @@ extern "C" {
 #include <libavformat/avio.h>
 }
 
+using namespace svi;
+
 VideoSource::VideoSource(int buffer_size)
 {
 	unsigned char *initialBuf = static_cast<unsigned char *>(av_malloc(buffer_size));
