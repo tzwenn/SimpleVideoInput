@@ -13,3 +13,13 @@ target_link_libraries(
 	basic_example
 	SimpleVideoCapture
 )
+
+add_executable(
+	file_source
+	file_source.cpp
+)
+
+target_link_libraries(
+	file_source
+	SimpleVideoCapture
+)

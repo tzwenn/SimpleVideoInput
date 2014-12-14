@@ -12,18 +12,9 @@ int main(int argc, char *argv[])
 	cv::Mat image;
 	int count = 0;
 	while (v.read(image)) {
-		std::cout << "Read Frame #" << count++ << "(" << v.millisecondsPerFrame() << ")" << std::endl;
-#ifdef __APPLE__
-		/* For OS X and C++11 I need clang's libc++,
-		   but my OpenCV is linked against GCC's libstdc++
-		   Thus I cannot pass std::string to CV and have to
-		   use the old C-API as a fallback *sigh*
-		 */
-		IplImage tmp = image;
-		cvShowImage("Current frame", &tmp);
-#else
+		std::cout << "Read Frame #" << count++ << " (" << v.millisecondsPerFrame() << "ms)" << std::endl;
+
 		cv::imshow("Current frame", image);
-#endif
 		if (cv::waitKey(v.millisecondsPerFrame()) == 'q')
 			break;
 	}
