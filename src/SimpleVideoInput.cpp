@@ -127,7 +127,7 @@ void SimpleVideoInput::openFormatContext(const std::string & fileName, AVIOConte
 	}
 
 	if (avformat_open_input(&pFormatCtx, fileName.c_str(), nullptr, nullptr) != 0)
-		throw std::runtime_error("Cannot open file: Does not exists or is no supported format");
+		throw std::runtime_error("Cannot open file: Does not exist or is no supported format");
 
 	m_detail->format
 		= std::shared_ptr<AVFormatContext>(pFormatCtx,
@@ -137,8 +137,6 @@ void SimpleVideoInput::openFormatContext(const std::string & fileName, AVIOConte
 										   });
 	if (avformat_find_stream_info(pFormatCtx, nullptr) < 0)
 		throw std::runtime_error("File contains no streams");
-
-	av_dump_format(pFormatCtx, 0, "input", 0);
 
 	findFirstVideoStream();
 	openCodec();
