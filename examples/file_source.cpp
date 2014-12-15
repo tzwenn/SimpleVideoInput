@@ -1,4 +1,6 @@
+#include "SimpleVideoInput.h"
 #include "VideoSource.h"
+
 #include <opencv2/highgui/highgui.hpp>
 #include <iostream>
 

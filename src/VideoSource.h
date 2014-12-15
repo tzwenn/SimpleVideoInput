@@ -1,6 +1,6 @@
 #pragma once
 
-#include "SimpleVideoInput.h"
+#include "Decoder.h"
 
 namespace svi {
 
@@ -24,7 +24,7 @@ namespace svi {
 		static int s_read(void *opaque, uint8_t *buf, int buf_size)
 		{ return static_cast<VideoSource *>(opaque)->read(buf, buf_size); }
 
-		friend SimpleVideoInput::SimpleVideoInput(const VideoSource &);
+		friend Decoder::Decoder(const VideoSource &);
 	};
 
 } // namespace svi
