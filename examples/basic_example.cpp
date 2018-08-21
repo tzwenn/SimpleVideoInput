@@ -14,12 +14,19 @@ int main(int argc, char *argv[])
 	int count = 0;
         cv::namedWindow("SimpleVideoInput", CV_WINDOW_NORMAL|CV_WINDOW_OPENGL);
         cv::resizeWindow("SimpleVideoInput", 1280, 720);
+        int minTimeValue = 30;
 
 	while (v.read(image)) {
-		std::cout << "Read Frame #" << count++ << " (" << v.millisecondsPerFrame() << "ms)" << std::endl;
+
+                if (v.millisecondsPerFrame() > 0)
+                    minTimeValue = v.millisecondsPerFrame();
+                else
+                    minTimeValue = 30;
+
+		std::cout << "Read Frame #" << count++ << " (" << minTimeValue << "ms)" << std::endl;
 
 		cv::imshow("SimpleVideoInput", image);
-		if (cv::waitKey(v.millisecondsPerFrame()) == 'q')
+		if (cv::waitKey(minTimeValue) == 'q')
 			break;
 	}
 		
