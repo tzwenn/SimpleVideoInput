@@ -8,6 +8,7 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libswscale/swscale.h>
+#include <libavutil/imgutils.h>
 }
 
 namespace svi {
@@ -68,7 +69,7 @@ struct SafeAVPacket
 	void freeData()
 	{
 		if (packet.data)
-			av_free_packet(&packet);
+			av_packet_unref(&packet);
 	}
 
 };
@@ -121,13 +122,14 @@ void Decoder::openFormatContext(const std::string & fileName, AVIOContext *ioCtx
 	// Open file
 
 	AVFormatContext *pFormatCtx = nullptr;
+
+	if (avformat_open_input(&pFormatCtx, fileName.c_str(), nullptr, nullptr) != 0)
+		throw std::runtime_error("Cannot open file: Does not exist or is no supported format");
+
 	if (ioCtx) {
 		pFormatCtx = avformat_alloc_context();
 		pFormatCtx->pb = ioCtx;
 	}
-
-	if (avformat_open_input(&pFormatCtx, fileName.c_str(), nullptr, nullptr) != 0)
-		throw std::runtime_error("Cannot open file: Does not exist or is no supported format");
 
 	m_detail->format
 		= std::shared_ptr<AVFormatContext>(pFormatCtx,
@@ -178,7 +180,9 @@ void Decoder::initLibavcodec()
 {
 	static std::once_flag initAVFlag;
 	std::call_once(initAVFlag, []() {
+#if LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58, 9, 100)
 		av_register_all();
+#endif
 	});
 
 }
@@ -187,7 +191,7 @@ void Decoder::findFirstVideoStream()
 {
 	for (int streamIdx = 0; streamIdx < m_detail->format->nb_streams; ++streamIdx) {
 		AVStream *stream = m_detail->format->streams[streamIdx];
-		if (stream->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
+		if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
 			m_detail->videoStreamIdx = streamIdx;
 			return;
 		}
@@ -199,13 +203,15 @@ void Decoder::findFirstVideoStream()
 void Decoder::openCodec()
 {
 	AVStream *stream = m_detail->format->streams[m_detail->videoStreamIdx];
-	AVCodecContext *pCodecCtx = stream->codec;
+        AVCodec *pCodec = avcodec_find_decoder(stream->codecpar->codec_id);
 
-	AVCodec *codec = avcodec_find_decoder(pCodecCtx->codec_id);
-	if (!codec)
+	if (!pCodec)
 		throw std::runtime_error("Codec required by video file not available");
 
-	if (avcodec_open2(pCodecCtx, codec, nullptr) < 0)
+        AVCodecContext *pCodecCtx = avcodec_alloc_context3(pCodec);
+        avcodec_parameters_to_context(pCodecCtx, stream->codecpar);
+
+	if (avcodec_open2(pCodecCtx, pCodec, nullptr) < 0)
 		throw std::runtime_error("Could not open codec");
 
 	m_detail->codecCtx = std::shared_ptr<AVCodecContext>(pCodecCtx, &avcodec_close);
@@ -220,33 +226,54 @@ void Decoder::prepareTargetBuffer()
 
 void Decoder::prepareResizeContext()
 {
-	m_detail->swsCtx = sws_getContext(m_detail->videoWidth,
-									  m_detail->videoHeight,
-									  m_detail->codecCtx->pix_fmt,
-									  m_detail->videoWidth,
-									  m_detail->videoHeight,
-									  PIX_FMT_BGR24,
-									  SWS_BILINEAR,
-									  nullptr, nullptr, nullptr);
+	m_detail->swsCtx = sws_getContext(	m_detail->videoWidth,
+						m_detail->videoHeight,
+						m_detail->codecCtx->pix_fmt,
+						m_detail->videoWidth,
+						m_detail->videoHeight,
+						AV_PIX_FMT_BGR24,
+						SWS_BILINEAR,
+						nullptr, nullptr, nullptr);
 
 	if (!m_detail->swsCtx)
 		throw std::runtime_error("Cannot get sws_getContext for resizing");
 
-	AVPicture frameAsBGR24;
-	avpicture_fill(&frameAsBGR24, nullptr, PIX_FMT_BGR24, m_detail->videoWidth, m_detail->videoHeight);
-	memcpy(m_detail->BGR24Linesize, frameAsBGR24.linesize, sizeof(m_detail->BGR24Linesize));
+        AVFrame frameAsBGR24;
+        av_image_fill_arrays(   frameAsBGR24.data,
+                                frameAsBGR24.linesize,
+                                m_detail->currentFrame->data[0],
+                                AV_PIX_FMT_BGR24,
+                                m_detail->videoWidth,
+                                m_detail->videoHeight,
+                                1
+                             );
+
+        memcpy(m_detail->BGR24Linesize, frameAsBGR24.linesize, sizeof(m_detail->BGR24Linesize));
 }
 
 bool Decoder::grab()
 {
 	SafeAVPacket packet;
 	int isFrameAvailable;
+        int frame_finished = 0;
+        int len = 0;
 
-	while (packet.reset(m_detail->format.get()) >= 0) {
+	while (packet.reset(m_detail->format.get()) >= 0)
+        {
 		if (packet.packet.stream_index != m_detail->videoStreamIdx)
 			continue;
 
-		avcodec_decode_video2(m_detail->codecCtx.get(), m_detail->currentFrame.get(), &isFrameAvailable, &packet.packet);
+                avcodec_send_packet(m_detail->codecCtx.get(), &packet.packet);
+
+                if (len < 0)
+                    return false;
+
+                len = avcodec_receive_frame(m_detail->codecCtx.get(), m_detail->currentFrame.get());
+
+                if ((len == AVERROR_EOF))
+                    isFrameAvailable = 0;
+                else
+                    isFrameAvailable = 1;
 
 		// ERROR, ERROR, FIXME!!!!!!!!!!!!!!!!
 		// I wrongly assume a packet fills whole frame
