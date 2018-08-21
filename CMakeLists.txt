@@ -27,7 +27,7 @@ find_package(FFmpeg REQUIRED)
 
 # Options
 
-option(WITH_EXAMPLES "add example projects" FALSE)
+option(WITH_EXAMPLES "add example projects" TRUE)
 if (WITH_EXAMPLES)
 	add_subdirectory(examples)
 endif (WITH_EXAMPLES)
